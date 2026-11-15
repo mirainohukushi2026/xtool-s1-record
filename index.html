@@ -22,7 +22,13 @@ input,select,textarea{width:100%;border:1px solid #dce0ec;border-radius:10px;pad
 textarea{min-height:82px;resize:vertical}.material-field{min-width:0}.wide{grid-column:1/-1}.param{border:1px solid var(--line);background:#fafaff;padding:13px;border-radius:13px;margin:10px 0}
 .param h3{font-size:14px;margin:0 0 10px}.paramgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
 .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}.secondary{background:#eef0f8}.danger{background:#fff0f2;color:#b82c4a}
-.hidden{display:none!important}.status{padding:10px 13px;border-radius:10px;background:#eff8f5;color:#247b65;font-size:13px;margin-bottom:14px}
+.hidden{display:none!important}
+.material-picker{position:relative;min-width:0}
+.material-suggestions{position:absolute;z-index:1000;top:calc(100% + 5px);left:0;right:0;max-height: min(280px, 45vh);overflow-y:auto;-webkit-overflow-scrolling:touch;background:#fff;border:1px solid #cfd5e5;border-radius:12px;box-shadow:0 8px 24px #20243a22;padding:5px}
+.material-option{display:block;width:100%;text-align:left;background:#fff;color:var(--ink);border:0;border-radius:8px;padding:12px 13px;min-height:44px;font:inherit;font-weight:500;touch-action:manipulation}
+.material-option:hover,.material-option:focus{background:#eef0ff;outline:none}
+.material-empty{padding:12px;color:var(--muted);font-size:13px}
+.status{padding:10px 13px;border-radius:10px;background:#eff8f5;color:#247b65;font-size:13px;margin-bottom:14px}
 .status.warn{background:#fff7e8;color:#8a5a13}.tablewrap{overflow:auto}table{border-collapse:collapse;width:100%;font-size:13px;min-width:760px}th,td{padding:10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}th{background:#f6f7fc}
 .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px}.record{border:1px solid var(--line);border-radius:13px;padding:13px}.record b{display:block;margin-bottom:6px}.record-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.record-actions button{padding:8px 11px;font-size:12px}
 #qr{display:flex;justify-content:center;padding:16px}footer{text-align:center;color:var(--muted);font-size:12px;padding:20px}
@@ -43,8 +49,10 @@ textarea{min-height:82px;resize:vertical}.material-field{min-width:0}.wide{grid-
 <div><label>作成者氏名</label><input id="author" placeholder="氏名"></div>
 <div class="material-field">
 <label for="material">素材 *</label>
-<input id="material" type="text" list="materialSuggestions" maxlength="80" autocomplete="off" placeholder="素材名を入力・候補から選択" required>
-<datalist id="materialSuggestions"></datalist>
+<div class="material-picker">
+<input id="material" type="text" maxlength="80" autocomplete="off" autocapitalize="off" spellcheck="false" aria-autocomplete="list" aria-controls="materialSuggestions" aria-expanded="false" placeholder="素材名を入力・候補から選択" required>
+<div id="materialSuggestions" class="material-suggestions hidden" role="listbox" aria-label="素材候補"></div>
+</div>
 <p class="hint" style="margin:6px 0 0">入力すると登録済み素材が候補に表示されます。新しい素材は入力後に自動保存されます。</p>
 </div>
 <div><label>素材の厚み（mm）</label><input type="number" id="thickness" min="0" step="0.1" placeholder="例：3.0"></div>
@@ -86,30 +94,66 @@ const MATERIALS=["バスウッド","ベニヤ板","バスウッド合板","バ�
 const RESULTS=["刻印","貫通","未貫通","発火","変化なし"];
 const paramsEl=document.getElementById('params');
 for(let i=1;i<=5;i++){paramsEl.insertAdjacentHTML('beforeend',`<div class="param"><h3>パラメータ ${i}</h3><div class="paramgrid"><div><label>パラメータ（%）</label><input type="number" id="p${i}" min="0" max="100" step="0.1" placeholder="例：80"></div><div><label>加工回数（回）</label><input type="number" id="c${i}" min="1" step="1" placeholder="例：2"></div><div><label>レーザーの強さ</label><select id="r${i}"><option value="">選択</option>${RESULTS.map(x=>`<option>${x}</option>`).join('')}</select></div></div></div>`)}
+let materialNames=[];
+const materialInput=document.getElementById('material');
+const materialSuggestions=document.getElementById('materialSuggestions');
+function renderMaterialSuggestions(){
+  const query=materialInput.value.trim().toLocaleLowerCase();
+  const matches=materialNames.filter(name=>!query||name.toLocaleLowerCase().includes(query));
+  materialSuggestions.innerHTML='';
+  if(!matches.length){
+    const empty=document.createElement('div');empty.className='material-empty';
+    empty.textContent=query?'候補はありません。入力した素材名で登録できます。':'候補がありません。';
+    materialSuggestions.appendChild(empty);
+  }else{
+    matches.forEach(name=>{
+      const option=document.createElement('button');
+      option.type='button';option.className='material-option';option.role='option';
+      option.textContent=name;
+      option.addEventListener('click',()=>{
+        materialInput.value=name;closeMaterialSuggestions();
+        materialInput.dispatchEvent(new Event('change',{bubbles:true}));
+      });
+      materialSuggestions.appendChild(option);
+    });
+  }
+  materialSuggestions.classList.remove('hidden');
+  materialInput.setAttribute('aria-expanded','true');
+}
+function closeMaterialSuggestions(){
+  materialSuggestions.classList.add('hidden');
+  materialInput.setAttribute('aria-expanded','false');
+}
 function addMaterialOption(name,selectIt=false){
   const value=String(name||'').trim();
   if(!value)return false;
-  const datalist=document.getElementById('materialSuggestions');
+  if(!materialNames.some(x=>x.toLocaleLowerCase()===value.toLocaleLowerCase())) materialNames.push(value);
   const search=document.getElementById('qMaterial');
-  if(![...datalist.options].some(o=>o.value.toLocaleLowerCase()===value.toLocaleLowerCase())){
-    datalist.add(new Option(value,value));
-  }
-  if(![...search.options].some(o=>o.value.toLocaleLowerCase()===value.toLocaleLowerCase())){
-    search.add(new Option(value,value));
-  }
-  if(selectIt)document.getElementById('material').value=value;
+  if(![...search.options].some(o=>o.value.toLocaleLowerCase()===value.toLocaleLowerCase())) search.add(new Option(value,value));
+  if(selectIt)materialInput.value=value;
   return true;
 }
 function initializeMaterialOptions(saved=[]){
-  const datalist=document.getElementById('materialSuggestions');
   const search=document.getElementById('qMaterial');
-  datalist.innerHTML='';
+  materialNames=[...new Map([...MATERIALS,...saved.filter(Boolean).map(x=>String(x).trim())].filter(Boolean).map(name=>[name.toLocaleLowerCase(),name])).values()];
   search.innerHTML='<option value="">すべて</option>';
-  [...new Set([...MATERIALS,...saved.filter(Boolean).map(x=>String(x).trim())])].forEach(name=>{
-    datalist.appendChild(new Option(name,name));
-    search.add(new Option(name,name));
-  });
+  materialNames.forEach(name=>search.add(new Option(name,name)));
 }
+materialInput.addEventListener('focus',renderMaterialSuggestions);
+materialInput.addEventListener('click',renderMaterialSuggestions);
+materialInput.addEventListener('input',renderMaterialSuggestions);
+materialInput.addEventListener('keydown',event=>{
+  if(event.key==='Escape'){closeMaterialSuggestions();return;}
+  if(event.key==='ArrowDown'&&!materialSuggestions.classList.contains('hidden')){
+    event.preventDefault();const first=materialSuggestions.querySelector('button');if(first)first.focus();
+  }
+});
+materialSuggestions.addEventListener('keydown',event=>{
+  if(event.key==='Escape'){closeMaterialSuggestions();materialInput.focus();}
+});
+document.addEventListener('click',event=>{
+  if(!event.target.closest('.material-picker'))closeMaterialSuggestions();
+});
 initializeMaterialOptions();
 document.getElementById('date').value=new Date().toISOString().slice(0,10);
 let db=null; const cfg=window.XTOOL_CONFIG||{};
@@ -142,8 +186,7 @@ async function loadSavedMaterials(){
 async function saveMaterialIfNew(rawName){
   const name=String(rawName||'').trim();
   if(!name)return;
-  const exists=[...document.getElementById('materialSuggestions').options]
-    .some(option=>option.value.toLocaleLowerCase()===name.toLocaleLowerCase());
+  const exists=materialNames.some(option=>option.toLocaleLowerCase()===name.toLocaleLowerCase());
   if(exists)return;
   if(db){
     const {error}=await db.from('xtool_materials').upsert({name},{onConflict:'name',ignoreDuplicates:true});
@@ -151,7 +194,6 @@ async function saveMaterialIfNew(rawName){
   }
   addMaterialOption(name,false);
 }
-const materialInput=document.getElementById('material');
 materialInput.addEventListener('change',async()=>{
   const name=materialInput.value.trim();
   if(!name)return;
@@ -174,9 +216,9 @@ function showRecords(records,target){if(!records.length){target.innerHTML='<p cl
 function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 document.getElementById('entryForm').addEventListener('submit',async e=>{e.preventDefault();const ps=[];for(let i=1;i<=5;i++){let power=document.getElementById('p'+i).value,passes=document.getElementById('c'+i).value,result=document.getElementById('r'+i).value;if(power!==''||passes!==''||result!=='')ps.push({slot:i,power:power===''?null:Number(power),passes:passes===''?null:Number(passes),result:result||null})}
 const rec={date:document.getElementById('date').value,material:document.getElementById('material').value,thickness:document.getElementById('thickness').value===''?null:Number(document.getElementById('thickness').value),author:document.getElementById('author').value,params:ps,notes:document.getElementById('notes').value};
-try{await saveMaterialIfNew(rec.material);if(editingId){await updateRecord(editingId,rec);editingId=null;document.getElementById('entryMsg').textContent='変更を保存しました。';document.getElementById('submitRecord').textContent='この内容で登録';document.getElementById('cancelEdit').classList.add('hidden')}else{await saveRecord(rec);document.getElementById('entryMsg').textContent='登録しました。'}e.target.reset();document.getElementById('date').value=new Date().toISOString().slice(0,10);await loadSavedMaterials();if(!document.getElementById('list').classList.contains('hidden'))refresh()}catch(err){document.getElementById('entryMsg').textContent='保存に失敗しました：'+err.message}});
+try{await saveMaterialIfNew(rec.material);if(editingId){await updateRecord(editingId,rec);editingId=null;document.getElementById('entryMsg').textContent='変更を保存しました。';document.getElementById('submitRecord').textContent='この内容で登録';document.getElementById('cancelEdit').classList.add('hidden')}else{await saveRecord(rec);document.getElementById('entryMsg').textContent='登録しました。'}e.target.reset();closeMaterialSuggestions();document.getElementById('date').value=new Date().toISOString().slice(0,10);await loadSavedMaterials();if(!document.getElementById('list').classList.contains('hidden'))refresh()}catch(err){document.getElementById('entryMsg').textContent='保存に失敗しました：'+err.message}});
 document.getElementById('cancelEdit').addEventListener('click',cancelEdit);
-document.getElementById('resetForm').addEventListener('click',()=>{if(editingId)cancelEdit()});
+document.getElementById('resetForm').addEventListener('click',()=>{closeMaterialSuggestions();if(editingId)cancelEdit()});
 async function refresh(){try{showRecords(await getRecords(),document.getElementById('recordList'))}catch(e){document.getElementById('recordList').textContent='読み込みエラー：'+e.message}}
 document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x===b));['entry','search','list','share'].forEach(id=>document.getElementById(id).classList.toggle('hidden',id!==b.dataset.tab));if(b.dataset.tab==='list')refresh()});
 document.getElementById('refresh').onclick=refresh;
