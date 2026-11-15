@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>xTool S1 加工記録</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="config.js"></script>
+<style>
+:root{--ink:#20243a;--muted:#687087;--bg:#f5f6fb;--card:#fff;--line:#e4e7f0;--pink:#ff6f91;--blue:#6878ef;--mint:#48b99a}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"Noto Sans JP",sans-serif}
+header{background:linear-gradient(120deg,#6675ed,#9b70db 60%,#ef7eaa);color:white;padding:24px max(18px,calc((100% - 1080px)/2))}
+header h1{margin:0;font-size:clamp(22px,4vw,32px)}header p{margin:7px 0 0;opacity:.9}
+main{max-width:1080px;margin:22px auto;padding:0 16px 48px}.tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+button,.tab{border:0;border-radius:12px;padding:11px 16px;font-weight:700;cursor:pointer;background:#e9ebf7;color:var(--ink)}
+.tab.active,button.primary{background:var(--blue);color:#fff}.tab{font-size:14px}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:20px;margin-bottom:16px;box-shadow:0 5px 20px #27305a0a}
+h2{font-size:19px;margin:0 0 16px}.hint{font-size:13px;color:var(--muted);line-height:1.6}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px}
+label{display:block;font-size:13px;font-weight:700;margin-bottom:6px;color:#525a73}
+input,select,textarea{width:100%;border:1px solid #dce0ec;border-radius:10px;padding:11px 12px;font:inherit;background:white;color:var(--ink)}
+textarea{min-height:82px;resize:vertical}.wide{grid-column:1/-1}.param{border:1px solid var(--line);background:#fafaff;padding:13px;border-radius:13px;margin:10px 0}
+.param h3{font-size:14px;margin:0 0 10px}.paramgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}.secondary{background:#eef0f8}.danger{background:#fff0f2;color:#b82c4a}
+.hidden{display:none!important}.status{padding:10px 13px;border-radius:10px;background:#eff8f5;color:#247b65;font-size:13px;margin-bottom:14px}
+.status.warn{background:#fff7e8;color:#8a5a13}.tablewrap{overflow:auto}table{border-collapse:collapse;width:100%;font-size:13px;min-width:760px}th,td{padding:10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}th{background:#f6f7fc}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px}.record{border:1px solid var(--line);border-radius:13px;padding:13px}.record b{display:block;margin-bottom:6px}
+#qr{display:flex;justify-content:center;padding:16px}footer{text-align:center;color:var(--muted);font-size:12px;padding:20px}
+@media(max-width:620px){.grid{grid-template-columns:1fr}.paramgrid{grid-template-columns:1fr 1fr}.panel{padding:15px}header{padding:20px 16px}}
+</style></head>
+<body>
+<header><h1>🛠️ xTool S1 加工記録</h1><p>加工条件を記録して、みんなで共有するデータベース</p></header>
+<main>
+<div id="mode" class="status warn">デモモード：この端末のブラウザ内に保存されます。複数端末で共有するにはSupabaseの設定が必要です。</div>
+<nav class="tabs">
+<button class="tab active" data-tab="entry">＋ 加工記録</button><button class="tab" data-tab="search">記録を検索</button><button class="tab" data-tab="list">記録一覧</button><button class="tab" data-tab="share">共有・QR</button>
+</nav>
+<section id="entry" class="panel">
+<h2>加工記録を登録</h2>
+<form id="entryForm">
+<div class="grid">
+<div><label>製作日 *</label><input type="date" id="date" required></div>
+<div><label>作成者氏名</label><input id="author" placeholder="氏名"></div>
+<div><label>素材 *</label><select id="material" required></select></div>
+<div><label>素材の厚み（mm）</label><input type="number" id="thickness" min="0" step="0.1" placeholder="例：3.0"></div>
+</div>
+<h2 style="margin-top:22px">レーザー加工条件（最大5パターン）</h2>
+<div id="params"></div>
+<div class="grid">
+<div><label>備考</label><textarea id="notes" placeholder="加工時の気づき・注意点など"></textarea></div>
+<div><label>記録について</label><p class="hint">各パターンごとに、パラメータ（%）、加工回数、レーザーの強さ・結果を記録します。空欄のパターンは保存されません。</p></div>
+</div>
+<div class="actions"><button class="primary" type="submit">この内容で登録</button><button type="reset" class="secondary">入力をリセット</button></div>
+</form><p id="entryMsg" class="hint"></p>
+</section>
+<section id="search" class="panel hidden">
+<h2>加工記録を検索</h2><p class="hint">入力した条件はAND検索です。厚みは指定値の±1.0 mmで検索します。パラメータと結果は同じ番号の組で照合します。</p>
+<div class="grid">
+<div><label>素材</label><select id="qMaterial"><option value="">すべて</option></select></div>
+<div><label>厚み（mm）</label><input type="number" id="qThickness" step="0.1" placeholder="例：3.0（±1.0）"></div>
+<div><label>パラメータ（%）</label><input type="number" id="qPower" step="0.1" placeholder="例：80"></div>
+<div><label>レーザーの強さ</label><select id="qResult"><option value="">すべて</option><option>刻印</option><option>貫通</option><option>未貫通</option><option>発火</option><option>変化なし</option></select></div>
+</div>
+<div class="actions"><button class="primary" id="doSearch">検索する</button><button class="secondary" id="clearSearch">条件クリア</button></div>
+<div id="searchResults" style="margin-top:16px"></div>
+</section>
+<section id="list" class="panel hidden">
+<h2>登録済みの記録</h2><div class="actions"><button class="secondary" id="refresh">更新</button><button class="secondary" id="export">CSVを書き出す</button></div><div id="recordList" style="margin-top:15px"></div>
+</section>
+<section id="share" class="panel hidden">
+<h2>共有・QRコード</h2>
+<p class="hint">公開後のWebアプリURLを入力すると、そのURLを開くQRコードを作成できます。URLを全員に配布すれば、スマホ・PCからアクセスできます。</p>
+<label>Webアプリの公開URL</label><input id="appUrl" placeholder="https://your-app.example.com">
+<div class="actions"><button class="primary" id="makeQr">QRコードを作成</button><button class="secondary" id="downloadQr">QR画像を保存</button></div><div id="qr"></div>
+<p class="hint">※現在の画面はまだ公開されていません。GitHub Pages / Vercel等に配置した後、そのURLを入力してください。</p>
+</section>
+<footer>xTool S1 40W 製作記録システム</footer>
+</main>
+<script>
+const MATERIALS=["バスウッド","ベニヤ板","バスウッド合板","バルサ材","テクニカル合板","ウォールナット材","ウォールナット合板","チェリー材","チェリー合板","オクメ合板","サペリ合板","レッドオーク合板","MDF","紙","厚紙","段ボール","革（天然皮革）","フェルト","布","不透明アクリル","黒色アクリル","竹","濃色ガラス","陶器","翡翠","大理石","頁岩","セメント","レンガ","ステンレス（表面処理・刻印）","メッキ金属","塗装金属"];
+const RESULTS=["刻印","貫通","未貫通","発火","変化なし"];
+const paramsEl=document.getElementById('params');
+for(let i=1;i<=5;i++){paramsEl.insertAdjacentHTML('beforeend',`<div class="param"><h3>パラメータ ${i}</h3><div class="paramgrid"><div><label>パラメータ（%）</label><input type="number" id="p${i}" min="0" max="100" step="0.1" placeholder="例：80"></div><div><label>加工回数（回）</label><input type="number" id="c${i}" min="1" step="1" placeholder="例：2"></div><div><label>レーザーの強さ</label><select id="r${i}"><option value="">選択</option>${RESULTS.map(x=>`<option>${x}</option>`).join('')}</select></div></div></div>`)}
+for(const id of ['material','qMaterial']){const el=document.getElementById(id);if(id==='qMaterial')el.innerHTML='<option value="">すべて</option>';el.insertAdjacentHTML('beforeend',MATERIALS.map(x=>`<option>${x}</option>`).join(''))}
+document.getElementById('date').value=new Date().toISOString().slice(0,10);
+let db=null; const cfg=window.XTOOL_CONFIG||{};
+if(cfg.supabaseUrl&&cfg.supabaseAnonKey&&window.supabase){db=window.supabase.createClient(cfg.supabaseUrl,cfg.supabaseAnonKey);document.getElementById('mode').textContent='共有モード：Supabaseデータベースに接続する設定です。';document.getElementById('mode').classList.remove('warn')}
+function localGet(){return JSON.parse(localStorage.getItem('xtool_records')||'[]')}
+function localSet(a){localStorage.setItem('xtool_records',JSON.stringify(a))}
+async function getRecords(){if(db){const {data,error}=await db.from('xtool_records').select('*').order('created_at',{ascending:false});if(error)throw error;return data||[]}return localGet()}
+async function saveRecord(record){if(db){const {error}=await db.from('xtool_records').insert(record);if(error)throw error}else{let a=localGet();a.unshift({...record,id:crypto.randomUUID(),created_at:new Date().toISOString()});localSet(a)}}
+function showRecords(records,target){if(!records.length){target.innerHTML='<p class="hint">該当する記録はありません。</p>';return}target.innerHTML='<div class="cards">'+records.map(x=>`<article class="record"><b>${esc(x.material)}　${x.thickness??'厚み未入力'} mm</b><div class="hint">${esc(x.date||'')} ／ ${esc(x.author||'作成者未入力')}</div>${(x.params||[]).map((p,i)=>`<p style="font-size:13px;margin:7px 0">P${i+1}: ${p.power??'—'}%・${p.passes??'—'}回・${esc(p.result||'未選択')}</p>`).join('')}<p class="hint">${esc(x.notes||'')}</p></article>`).join('')+'</div>'}
+function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+document.getElementById('entryForm').addEventListener('submit',async e=>{e.preventDefault();const ps=[];for(let i=1;i<=5;i++){let power=document.getElementById('p'+i).value,passes=document.getElementById('c'+i).value,result=document.getElementById('r'+i).value;if(power!==''||passes!==''||result!=='')ps.push({slot:i,power:power===''?null:Number(power),passes:passes===''?null:Number(passes),result:result||null})}
+const rec={date:document.getElementById('date').value,material:document.getElementById('material').value,thickness:document.getElementById('thickness').value===''?null:Number(document.getElementById('thickness').value),author:document.getElementById('author').value,params:ps,notes:document.getElementById('notes').value};
+try{await saveRecord(rec);document.getElementById('entryMsg').textContent='登録しました。';e.target.reset();document.getElementById('date').value=new Date().toISOString().slice(0,10)}catch(err){document.getElementById('entryMsg').textContent='登録に失敗しました：'+err.message}});
+async function refresh(){try{showRecords(await getRecords(),document.getElementById('recordList'))}catch(e){document.getElementById('recordList').textContent='読み込みエラー：'+e.message}}
+document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x===b));['entry','search','list','share'].forEach(id=>document.getElementById(id).classList.toggle('hidden',id!==b.dataset.tab));if(b.dataset.tab==='list')refresh()});
+document.getElementById('refresh').onclick=refresh;
+document.getElementById('doSearch').onclick=async()=>{try{let a=await getRecords(),m=document.getElementById('qMaterial').value,t=document.getElementById('qThickness').value,p=document.getElementById('qPower').value,r=document.getElementById('qResult').value;
+a=a.filter(x=>(!m||x.material===m)&&(!t||x.thickness!=null&&Math.abs(x.thickness-Number(t))<=1)&&(!p&&!r||(x.params||[]).some(z=>(!p||Number(z.power)===Number(p))&&(!r||z.result===r))));
+showRecords(a,document.getElementById('searchResults'))}catch(e){document.getElementById('searchResults').textContent=e.message}};
+document.getElementById('clearSearch').onclick=()=>{['qMaterial','qThickness','qPower','qResult'].forEach(id=>document.getElementById(id).value='');document.getElementById('searchResults').innerHTML=''};
+document.getElementById('export').onclick=async()=>{try{let a=await getRecords(),head=['製作日','素材','素材の厚み(mm)','作成者氏名',...Array.from({length:5},(_,i)=>[`パラメータ${i+1}(%)`,`加工回数${i+1}(回)`,`レーザーの強さ${i+1}`]).flat(),'備考'];let rows=a.map(x=>[x.date,x.material,x.thickness,x.author,...Array.from({length:5},(_,i)=>{let p=(x.params||[]).find(z=>z.slot===i+1)||{};return[p.power,p.passes,p.result]}).flat(),x.notes]);let csv=[head,...rows].map(r=>r.map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(',')).join('\r\n');let blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'}),u=URL.createObjectURL(blob),ael=document.createElement('a');ael.href=u;ael.download='xTool加工記録.csv';ael.click();URL.revokeObjectURL(u)}catch(e){alert(e.message)}};
+document.getElementById('makeQr').onclick=()=>{let u=document.getElementById('appUrl').value.trim();if(!u){alert('公開URLを入力してください');return}document.getElementById('qr').innerHTML='';new QRCode(document.getElementById('qr'),{text:u,width:220,height:220,correctLevel:QRCode.CorrectLevel.M})};
+document.getElementById('downloadQr').onclick=()=>{let c=document.querySelector('#qr canvas');if(!c){alert('先にQRコードを作成してください');return}let a=document.createElement('a');a.href=c.toDataURL();a.download='xToolアプリ_QRコード.png';a.click()};
+</script>
+</body></html>
