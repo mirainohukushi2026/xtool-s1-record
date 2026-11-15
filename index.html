@@ -106,7 +106,7 @@ function initializeMaterialOptions(saved=[]){
   datalist.innerHTML='';
   search.innerHTML='<option value="">すべて</option>';
   [...new Set([...MATERIALS,...saved.filter(Boolean).map(x=>String(x).trim())])].forEach(name=>{
-    datalist.add(new Option(name,name));
+    datalist.appendChild(new Option(name,name));
     search.add(new Option(name,name));
   });
 }
