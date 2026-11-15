@@ -19,7 +19,7 @@ h2{font-size:19px;margin:0 0 16px}.hint{font-size:13px;color:var(--muted);line-h
 .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px}
 label{display:block;font-size:13px;font-weight:700;margin-bottom:6px;color:#525a73}
 input,select,textarea{width:100%;border:1px solid #dce0ec;border-radius:10px;padding:11px 12px;font:inherit;background:white;color:var(--ink)}
-textarea{min-height:82px;resize:vertical}.material-add{display:flex;gap:8px;margin-top:8px}.material-add input{flex:1;min-width:0}.material-add button{white-space:nowrap}.wide{grid-column:1/-1}.param{border:1px solid var(--line);background:#fafaff;padding:13px;border-radius:13px;margin:10px 0}
+textarea{min-height:82px;resize:vertical}.material-field{min-width:0}.wide{grid-column:1/-1}.param{border:1px solid var(--line);background:#fafaff;padding:13px;border-radius:13px;margin:10px 0}
 .param h3{font-size:14px;margin:0 0 10px}.paramgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
 .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}.secondary{background:#eef0f8}.danger{background:#fff0f2;color:#b82c4a}
 .hidden{display:none!important}.status{padding:10px 13px;border-radius:10px;background:#eff8f5;color:#247b65;font-size:13px;margin-bottom:14px}
@@ -41,14 +41,11 @@ textarea{min-height:82px;resize:vertical}.material-add{display:flex;gap:8px;marg
 <div class="grid">
 <div><label>製作日 *</label><input type="date" id="date" required></div>
 <div><label>作成者氏名</label><input id="author" placeholder="氏名"></div>
-<div>
-<label>素材 *</label>
-<select id="material" required></select>
-<div class="material-add">
-  <input id="newMaterial" type="text" maxlength="80" placeholder="新しい素材名を入力">
-  <button type="button" class="secondary" id="addMaterial">＋ 素材を追加</button>
-</div>
-<p class="hint" style="margin:6px 0 0">追加した素材は、加工記録を保存すると全端末の選択肢に反映されます。</p>
+<div class="material-field">
+<label for="material">素材 *</label>
+<input id="material" type="text" list="materialSuggestions" maxlength="80" autocomplete="off" placeholder="素材名を入力・候補から選択" required>
+<datalist id="materialSuggestions"></datalist>
+<p class="hint" style="margin:6px 0 0">入力すると登録済み素材が候補に表示されます。新しい素材は入力後に自動保存されます。</p>
 </div>
 <div><label>素材の厚み（mm）</label><input type="number" id="thickness" min="0" step="0.1" placeholder="例：3.0"></div>
 </div>
@@ -77,7 +74,7 @@ textarea{min-height:82px;resize:vertical}.material-add{display:flex;gap:8px;marg
 </section>
 <section id="share" class="panel hidden">
 <h2>共有・QRコード</h2>
-<p class="hint">公開後のWebアプリURLを入力すると、そのURLを開くQRコードを作成できます。URLを知っている人は閲覧・登録・編集・削除ができます。</p>
+<p class="hint">公開後のWebアプリURLを入力すると、そのURLを開くQRコードを作成できます。URLを知っている人は閲覧・登録・編集・削除ができます。素材候補も全端末で共有されます。</p>
 <label>Webアプリの公開URL</label><input id="appUrl" placeholder="https://your-app.example.com">
 <div class="actions"><button class="primary" id="makeQr">QRコードを作成</button><button class="secondary" id="downloadQr">QR画像を保存</button></div><div id="qr"></div>
 <p class="hint">※現在の画面はまだ公開されていません。GitHub Pages / Vercel等に配置した後、そのURLを入力してください。</p>
@@ -92,37 +89,28 @@ for(let i=1;i<=5;i++){paramsEl.insertAdjacentHTML('beforeend',`<div class="param
 function addMaterialOption(name,selectIt=false){
   const value=String(name||'').trim();
   if(!value)return false;
-  const select=document.getElementById('material');
-  let option=[...select.options].find(o=>o.value===value);
-  if(!option){option=new Option(value,value);select.add(option)}
+  const datalist=document.getElementById('materialSuggestions');
   const search=document.getElementById('qMaterial');
-  if(![...search.options].some(o=>o.value===value))search.add(new Option(value,value));
-  if(selectIt)select.value=value;
+  if(![...datalist.options].some(o=>o.value.toLocaleLowerCase()===value.toLocaleLowerCase())){
+    datalist.add(new Option(value,value));
+  }
+  if(![...search.options].some(o=>o.value.toLocaleLowerCase()===value.toLocaleLowerCase())){
+    search.add(new Option(value,value));
+  }
+  if(selectIt)document.getElementById('material').value=value;
   return true;
 }
 function initializeMaterialOptions(saved=[]){
-  const select=document.getElementById('material');
+  const datalist=document.getElementById('materialSuggestions');
   const search=document.getElementById('qMaterial');
-  select.innerHTML='';
+  datalist.innerHTML='';
   search.innerHTML='<option value="">すべて</option>';
   [...new Set([...MATERIALS,...saved.filter(Boolean).map(x=>String(x).trim())])].forEach(name=>{
-    select.add(new Option(name,name));
+    datalist.add(new Option(name,name));
     search.add(new Option(name,name));
   });
 }
 initializeMaterialOptions();
-document.getElementById('addMaterial').addEventListener('click',()=>{
-  const input=document.getElementById('newMaterial');
-  const name=input.value.trim();
-  if(!name){alert('追加する素材名を入力してください');input.focus();return}
-  if(addMaterialOption(name,true)){
-    input.value='';
-    document.getElementById('entryMsg').textContent=`「${name}」を選択肢に追加しました。加工記録を保存すると、他の端末にも共有されます。`;
-  }
-});
-document.getElementById('newMaterial').addEventListener('keydown',e=>{
-  if(e.key==='Enter'){e.preventDefault();document.getElementById('addMaterial').click()}
-});
 document.getElementById('date').value=new Date().toISOString().slice(0,10);
 let db=null; const cfg=window.XTOOL_CONFIG||{};
 if(cfg.supabaseUrl&&cfg.supabaseAnonKey&&window.supabase){db=window.supabase.createClient(cfg.supabaseUrl,cfg.supabaseAnonKey);document.getElementById('mode').textContent='共有モード：Supabaseデータベースに接続する設定です。';document.getElementById('mode').classList.remove('warn')}
@@ -132,14 +120,49 @@ async function getRecords(){if(db){const {data,error}=await db.from('xtool_recor
 async function loadSavedMaterials(){
   try{
     const records=await getRecords();
-    const saved=records.map(record=>record.material).filter(Boolean);
+    let saved=records.map(record=>record.material).filter(Boolean);
+    if(db){
+      const {data,error}=await db.from('xtool_materials').select('name').order('name');
+      if(error)throw error;
+      saved=[...saved,...(data||[]).map(row=>row.name)];
+    }
     const current=document.getElementById('material').value;
     initializeMaterialOptions(saved);
     if(current)addMaterialOption(current,true);
   }catch(error){
-    console.warn('登録済み素材の読み込みに失敗しました',error);
+    console.warn('素材候補の読み込みに失敗しました。加工記録の素材名から候補を復元します。',error);
+    try{
+      const records=await getRecords();
+      const current=document.getElementById('material').value;
+      initializeMaterialOptions(records.map(record=>record.material).filter(Boolean));
+      if(current)addMaterialOption(current,true);
+    }catch(fallbackError){console.warn(fallbackError)}
   }
 }
+async function saveMaterialIfNew(rawName){
+  const name=String(rawName||'').trim();
+  if(!name)return;
+  const exists=[...document.getElementById('materialSuggestions').options]
+    .some(option=>option.value.toLocaleLowerCase()===name.toLocaleLowerCase());
+  if(exists)return;
+  if(db){
+    const {error}=await db.from('xtool_materials').upsert({name},{onConflict:'name',ignoreDuplicates:true});
+    if(error)throw error;
+  }
+  addMaterialOption(name,false);
+}
+const materialInput=document.getElementById('material');
+materialInput.addEventListener('change',async()=>{
+  const name=materialInput.value.trim();
+  if(!name)return;
+  try{
+    await saveMaterialIfNew(name);
+    document.getElementById('entryMsg').textContent=`素材「${name}」を保存しました。次回から候補に表示されます。`;
+  }catch(error){
+    document.getElementById('entryMsg').textContent='素材の共有保存に失敗しました。加工記録の保存時に再試行します。';
+    console.error(error);
+  }
+});
 loadSavedMaterials();
 async function saveRecord(record){if(db){const {error}=await db.from('xtool_records').insert(record);if(error)throw error}else{let a=localGet();a.unshift({...record,id:crypto.randomUUID(),created_at:new Date().toISOString()});localSet(a)}}
 let editingId=null;
@@ -151,7 +174,7 @@ function showRecords(records,target){if(!records.length){target.innerHTML='<p cl
 function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 document.getElementById('entryForm').addEventListener('submit',async e=>{e.preventDefault();const ps=[];for(let i=1;i<=5;i++){let power=document.getElementById('p'+i).value,passes=document.getElementById('c'+i).value,result=document.getElementById('r'+i).value;if(power!==''||passes!==''||result!=='')ps.push({slot:i,power:power===''?null:Number(power),passes:passes===''?null:Number(passes),result:result||null})}
 const rec={date:document.getElementById('date').value,material:document.getElementById('material').value,thickness:document.getElementById('thickness').value===''?null:Number(document.getElementById('thickness').value),author:document.getElementById('author').value,params:ps,notes:document.getElementById('notes').value};
-try{if(editingId){await updateRecord(editingId,rec);editingId=null;document.getElementById('entryMsg').textContent='変更を保存しました。';document.getElementById('submitRecord').textContent='この内容で登録';document.getElementById('cancelEdit').classList.add('hidden')}else{await saveRecord(rec);document.getElementById('entryMsg').textContent='登録しました。'}e.target.reset();document.getElementById('date').value=new Date().toISOString().slice(0,10);await loadSavedMaterials();if(!document.getElementById('list').classList.contains('hidden'))refresh()}catch(err){document.getElementById('entryMsg').textContent='保存に失敗しました：'+err.message}});
+try{await saveMaterialIfNew(rec.material);if(editingId){await updateRecord(editingId,rec);editingId=null;document.getElementById('entryMsg').textContent='変更を保存しました。';document.getElementById('submitRecord').textContent='この内容で登録';document.getElementById('cancelEdit').classList.add('hidden')}else{await saveRecord(rec);document.getElementById('entryMsg').textContent='登録しました。'}e.target.reset();document.getElementById('date').value=new Date().toISOString().slice(0,10);await loadSavedMaterials();if(!document.getElementById('list').classList.contains('hidden'))refresh()}catch(err){document.getElementById('entryMsg').textContent='保存に失敗しました：'+err.message}});
 document.getElementById('cancelEdit').addEventListener('click',cancelEdit);
 document.getElementById('resetForm').addEventListener('click',()=>{if(editingId)cancelEdit()});
 async function refresh(){try{showRecords(await getRecords(),document.getElementById('recordList'))}catch(e){document.getElementById('recordList').textContent='読み込みエラー：'+e.message}}
